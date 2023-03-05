@@ -17,12 +17,14 @@ public PrintHex
 ;		AH	- symbol attribute
 ;		BX	- number to print
 ; Exit:		None
-; Destr:	AL, BX, SI, DI, DF
+; Destr:	AL, BX, CX, SI, DF
 ;----------------------------------------------------------------------------------------------------
 PrintHex	proc
 
-		add		di,		04h
+		add		di,		08h
 		std
+
+		mov		cx,		04h
 
 @@PrintLoop:	mov		si,		bx	
 		and		si,		0Fh
@@ -32,7 +34,7 @@ PrintHex	proc
 		stosw
 		
 		shr		bx,		4h
-		jnz		@@PrintLoop
+		loop		@@PrintLoop
 		
 		ret
 
