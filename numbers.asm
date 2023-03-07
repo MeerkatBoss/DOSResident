@@ -21,7 +21,7 @@ public PrintHex
 ;----------------------------------------------------------------------------------------------------
 PrintHex	proc
 
-		add		di,		08h
+		add		di,		06h
 		std
 
 		mov		cx,		04h
@@ -35,6 +35,8 @@ PrintHex	proc
 		
 		shr		bx,		4h
 		loop		@@PrintLoop
+
+		add		di,		02h
 		
 		ret
 

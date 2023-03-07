@@ -49,7 +49,8 @@ InitAndTSR	proc
 
 		sti
 
-		int		08h
+;		int		08h
+;		int		08h
 
 		mov		dx, offset	ResidentEnd
 		shr		dx,		4h		; / 16
@@ -60,5 +61,7 @@ InitAndTSR	proc
 
 		endp
 ;----------------------------------------------------------------------------------------------------
+
+
 
 end

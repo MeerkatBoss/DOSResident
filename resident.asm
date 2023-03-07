@@ -6,9 +6,18 @@ org 100h
 
 extrn	PrintHex:proc
 extrn	InitAndTSR:proc
+extrn	LoadTemplate:proc
+extrn	RestoreVidMem:proc
+extrn	UpdSavedVidMem:proc
+extrn	DrawToVidMem:proc
+
+extrn	DrawBuffer:word
 
 include stdmacro.asm
+
 include vidmacro.asm
+
+include bufconst.asm
 
 public ScreenDrawer, KeyboardHandler, IRQ0DfltOffs, IRQ0DfltSeg, IRQ1DfltOffs, IRQ1DfltSeg
 
@@ -58,8 +67,11 @@ Start:		call InitAndTSR		; noreturn
 ;----------------------------------------------------------------------------------------------------
 ; Draws frame containing register values. Connected to IRQ0
 ;----------------------------------------------------------------------------------------------------
+; State variable
+ST_CHANGED	equ 02h
+ST_DRAW		equ 01h
+DrawState	db  03h
 ;----------------------------------------------------------------------------------------------------
-DrawScreen	db 00h
 
 ScreenDrawer	proc
 
@@ -68,39 +80,46 @@ ScreenDrawer	proc
 
 		push		ax bx cx dx si di ds es
 
-		mov		al, byte ptr	cs:[DrawScreen]
-		and		al,		01h
+		mov		al, byte ptr	cs:[DrawState]
+		and		al,		ST_DRAW		; need to draw?
 		jnz		@@Draw
-		jmp		@@DrawEnd
+		jmp		@@NoDraw
 
 @@Draw:		mov		ax,		ss:[bp-2]	; restore old ax
-		push		ax
-		push		bx
-		push		cx
-		push		dx
-		push		si
-		push		di
+		push		ax bx cx dx si di		; push general-usage regs
 
 		mov		ax,		ss:[bp]
-		push		ax			; old bp
+		push		ax				; old bp
 
 		mov		ax,		bp
 		sub		ax,		02h
-		push		ax			; old sp
+		push		ax				; old sp (= bp-2)
 
-		push		ds	
-		push		es
-		push		ss
-		push		cs
+		push		ds es ss cs			; push segment regs
 
 		push		cs
-		pop		ds		; ds = cs
+		pop		ds				; ds = cs for tiny model
 
-		.load_vbuf_es
+		mov		al, byte ptr	cs:[DrawState]
+		and		al,		ST_CHANGED
+		jz		@@NoUpdate
 
+		call		LoadTemplate
+		mov		al,		01h
+		mov byte ptr	[DrawState],	al
+
+
+@@NoUpdate:	.load_vbuf_es
 		xor		di,		di
-		.load_xy	73d,		14d
+		.load_xy	68d,		1d
 		.get_offset
+		call		UpdSavedVidMem
+
+		push		ds
+		pop		es				; es = ds for access to DrawBuffer
+
+		lea		di,		DrawBuffer+FIRSTNUMOFFS
+		add		di,		11d*2d*ROWLEN
 
 		mov		cx,		12d
 
@@ -109,10 +128,34 @@ ScreenDrawer	proc
 		push		cx
 		call		PrintHex
 
-		sub		di,		2*80d
+		sub		di,		2*ROWLEN
 
 		pop		cx
 		loop		@@PrintRegs
+
+		.load_vbuf_es
+		xor		di,		di
+		.load_xy	68d,		1d
+		.get_offset
+		call		DrawToVidMem
+
+		jmp		@@DrawEnd
+
+@@NoDraw:	mov		al, byte ptr	cs:[DrawState]
+		and		al,		ST_CHANGED
+		jz		@@DrawEnd
+
+		push		cs
+		pop		ds		; ds = es for tiny model
+
+		.load_vbuf_es
+		xor		di,		di
+		.load_xy	68d,		1d
+		.get_offset
+		call		RestoreVidMem
+
+		xor		al,		al
+		mov byte ptr	[DrawState],	al
 
 @@DrawEnd:	pop		es ds di si dx cx bx ax
 
@@ -150,9 +193,10 @@ KeyboardHandler	proc
 		je		@@ChangeState
 		jmp		@@KeybDflt
 
-@@ChangeState:	mov		al, byte ptr	DrawScreen
-		xor		al,		01h	; flip last bit
-		mov byte ptr	DrawScreen,	al
+@@ChangeState:	mov		al, byte ptr	DrawState
+		xor		al,		ST_DRAW		; flip DRAW state bit
+		or		al,		ST_CHANGED	; set CHANGED state bit
+		mov byte ptr	DrawState,	al
 
 		.blink_ppi
 		.handle_intr
